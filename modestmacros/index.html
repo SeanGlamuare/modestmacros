@@ -1110,11 +1110,12 @@ function stepNext(){
     if(totalEl) total=parseFloat(totalEl.textContent.replace('$',''))||0;
     const meals=selCards.map(card=>{
       const id=card.dataset.id;
-      const meal=MENU_DATA.find(m=>m.id===id);
+      // Capture ONLY checked ingredients from the DOM (not defaults from MENU_DATA)
+      const checkedIngs=Array.from(card.querySelectorAll('.ing-item.checked')).map(el=>el.dataset.name);
       return {
         meal_id: id,
         name: card.dataset.name||id,
-        ings: meal?meal.ingredients.map(i=>i.name).join(', '):'',
+        ings: checkedIngs.join(', '),
         cal: parseInt(card.dataset.cal)||0,
         p: parseInt(card.dataset.p)||0,
         c: parseInt(card.dataset.c)||0,
@@ -1122,7 +1123,7 @@ function stepNext(){
       };
     });
     const mealsPerDay=parseInt(document.getElementById('f-mealfreq').value)||3;
-    // Capture week plan for stickers
+    // Capture week plan for stickers — include selected ingredients per meal
     const weekPlanMeals=[];
     document.querySelectorAll('.day-meal-row').forEach(row=>{
       const nameEl=row.querySelector('.dmr-name');
@@ -1131,7 +1132,11 @@ function stepNext(){
         const mealName=nameEl.textContent;
         const mealType=typeEl?typeEl.textContent:'';
         const found=MENU_DATA.find(m=>m.name===mealName);
-        weekPlanMeals.push({meal_id:found?found.id:'',name:mealName,type:mealType});
+        const mealId=found?found.id:'';
+        // Get checked ingredients for this meal from the order form card
+        const mealCard=mealId?document.querySelector('.meal-card[data-id="'+mealId+'"]'):null;
+        const selectedIngs=mealCard?Array.from(mealCard.querySelectorAll('.ing-item.checked')).map(el=>el.dataset.name):[];
+        weekPlanMeals.push({meal_id:mealId,name:mealName,type:mealType,ings:selectedIngs});
       }
     });
     const newOrder={id:orderId,client,phone,location,goal,date:today,status:'pending',total,meals,mealsPerDay,weekPlanMeals};
@@ -1766,7 +1771,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const cn=existing.querySelector('.mci-name');if(cn)cn.textContent=meal.name;
       const cc=existing.querySelector('.mci-cat');if(cc)cc.textContent=meal.cat;
       const cp=existing.querySelector('.mci-price strong');if(cp)cp.textContent='$'+totalCost.toFixed(2);
-      const ci=existing.querySelector('.meal-card-img');if(ci&&!MEAL_IMGS[meal.id]?.startsWith('data:'))ci.src=imgSrc;
+      const ci=existing.querySelector('.meal-card-img');if(ci)ci.src=imgSrc;
       const il=existing.querySelector('.ing-list');
       if(il){
         il.innerHTML=meal.ingredients.map(ing=>{
@@ -2501,6 +2506,7 @@ function renderStickers(){
         p:m.p||0,
         c:m.c||0,
         f:m.f||0,
+        selectedIngs:m.ings||null,
         menuMeal:menuMeal
       });
     });
@@ -2530,7 +2536,16 @@ function renderStickers(){
         </div>`
       ).join('');
     } else if(i.menuMeal&&i.menuMeal.ingredients){
-      ingsHtml=i.menuMeal.ingredients.map(ing=>
+      // Filter to only show ingredients the customer actually selected
+      const selNames=i.selectedIngs;
+      const filteredIngs=selNames&&selNames.length
+        ? i.menuMeal.ingredients.filter(ing=>{
+            // selectedIngs can be an array of names or a comma-separated string
+            const names=Array.isArray(selNames)?selNames:selNames.split(', ');
+            return names.includes(ing.name);
+          })
+        : i.menuMeal.ingredients;
+      ingsHtml=filteredIngs.map(ing=>
         `<div style="display:flex;justify-content:space-between;font-size:.65rem;padding:.1rem 0;border-bottom:1px dotted #ddd">
           <span>${ing.name}</span><span style="font-weight:500">${ing.grams}g</span>
         </div>`
@@ -2582,7 +2597,11 @@ function renderShoppingList(){
     mealList.forEach(m=>{
       const menuMeal=MENU_DATA.find(md=>md.id===m.meal_id);
       if(!menuMeal)return;
-      menuMeal.ingredients.forEach(ing=>{
+      // Filter to only selected ingredients
+      const selNames=m.ings;
+      const names=selNames?(Array.isArray(selNames)?selNames:selNames.split(', ')):null;
+      const ings=names&&names.length?menuMeal.ingredients.filter(i=>names.includes(i.name)):menuMeal.ingredients;
+      ings.forEach(ing=>{
         const key=ing.name.toLowerCase().trim();
         if(!ingMap[key]){
           ingMap[key]={name:ing.name,totalGrams:0,pkgPrice:ing.pkgPrice,colesProduct:ing.colesProduct,colesUrl:ing.colesUrl,serves:0};
