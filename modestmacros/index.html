@@ -1390,7 +1390,11 @@ function buildCheckout(){
   const weeksTotal=avgMealCost*totalMeals;
   const svc=80;
   const name=document.getElementById('f-name').value||'Client';
+  const phone=document.getElementById('f-phone').value||'';
+  const loc=document.getElementById('f-location').value||'';
   document.getElementById('order-total-box').innerHTML=`
+    <div class="osb-row"><span>Client</span><span>${name}${phone?' · '+phone:''}</span></div>
+    ${loc?'<div class="osb-row"><span>Drop-off</span><span>'+loc+'</span></div>':''}
     <div class="osb-row"><span>Ingredient cost (${mealsPerDay} meals/day × 7 days = ${totalMeals} meals)</span><span>$${weeksTotal.toFixed(2)}</span></div>
     <div class="osb-row"><span>Service charge (meal prep, cooking & delivery)</span><span>$${svc.toFixed(2)}</span></div>
     <div class="osb-total"><span>Total</span><span><em>$${(weeksTotal+svc).toFixed(2)}</em></span></div>
