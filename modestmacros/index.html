@@ -1463,33 +1463,28 @@ async function sbFetch(path, options={}) {
   return text ? JSON.parse(text) : [];
 }
 
-// ── SUPABASE STORAGE: Image Upload ──
-async function uploadMealImage(mealId, file) {
-  const ext = file.name.split('.').pop().toLowerCase();
-  const fileName = mealId + '-' + Date.now() + '.' + ext;
-  const uploadUrl = SUPABASE_URL + '/storage/v1/object/meal-images/' + fileName;
-  console.log('[IMG] Uploading:', file.name, '→', uploadUrl);
-
-  const res = await fetch(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': 'Bearer ' + SUPABASE_KEY,
-      'Content-Type': file.type || 'image/jpeg',
-      'x-upsert': 'true'
-    },
-    body: file
+// ── IMAGE COMPRESS & STORE (no Storage bucket needed) ──
+function compressImage(file, maxSize, quality) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const img = new Image();
+      img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > h) { if (w > maxSize) { h = Math.round(h * maxSize / w); w = maxSize; } }
+        else       { if (h > maxSize) { w = Math.round(w * maxSize / h); h = maxSize; } }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
   });
-
-  const responseText = await res.text();
-  console.log('[IMG] Response:', res.status, responseText);
-
-  if (!res.ok) {
-    throw new Error('Upload failed (' + res.status + '): ' + responseText);
-  }
-  const publicUrl = SUPABASE_URL + '/storage/v1/object/public/meal-images/' + fileName;
-  console.log('[IMG] Public URL:', publicUrl);
-  return publicUrl;
 }
 
 // In-memory store (loaded from Supabase on init)
@@ -1662,11 +1657,10 @@ function hideDBStatus() {
 function saveMenuToLocal(){
   try{
     localStorage.setItem('mm_menu_data',JSON.stringify(MENU_DATA));
-    // Save images separately (skip base64 for size, only save URL-based imgs)
+    // Save all images (compressed data URLs are small enough)
     const imgStore={};
     Object.keys(MEAL_IMGS).forEach(k=>{
-      const v=MEAL_IMGS[k];
-      if(v&&!v.startsWith('data:'))imgStore[k]=v;
+      if(MEAL_IMGS[k])imgStore[k]=MEAL_IMGS[k];
     });
     localStorage.setItem('mm_meal_imgs',JSON.stringify(imgStore));
   }catch(e){console.error('localStorage save error:',e);}
@@ -1721,7 +1715,7 @@ function saveCustomStickersToLocal(){
 async function saveMenuToDB(){
   try{
     for(const meal of MENU_DATA){
-      const imgUrl=(typeof MEAL_IMGS!=='undefined'&&MEAL_IMGS[meal.id]&&!MEAL_IMGS[meal.id].startsWith('data:'))?MEAL_IMGS[meal.id]:null;
+      const imgUrl=(typeof MEAL_IMGS!=='undefined'&&MEAL_IMGS[meal.id])?MEAL_IMGS[meal.id]:null;
       const row={id:meal.id,name:meal.name,cat:meal.cat,description:meal.desc,ingredients:JSON.stringify(meal.ingredients),image_url:imgUrl,updated_at:new Date().toISOString()};
       await sbFetch('menu_items',{method:'POST',prefer:'return=minimal',headers:{'Prefer':'return=minimal,resolution=merge-duplicates'},body:JSON.stringify(row)});
     }
@@ -1754,7 +1748,7 @@ async function loadMenuFromDB(){
       // Save to localStorage (without re-triggering DB save)
       try{
         localStorage.setItem('mm_menu_data',JSON.stringify(MENU_DATA));
-        const imgStore={};Object.keys(MEAL_IMGS).forEach(k=>{const v=MEAL_IMGS[k];if(v&&!v.startsWith('data:'))imgStore[k]=v;});
+        const imgStore={};Object.keys(MEAL_IMGS).forEach(k=>{if(MEAL_IMGS[k])imgStore[k]=MEAL_IMGS[k];});
         localStorage.setItem('mm_meal_imgs',JSON.stringify(imgStore));
       }catch(e){}
     }
@@ -2304,24 +2298,25 @@ async function handleMealImageUpload(mealId, fileInput) {
   const file = fileInput.files[0];
   if (!file) return;
   const btn = document.getElementById('me-img-btn-' + mealId);
-  const origText = btn ? btn.textContent : '';
-  if (btn) { btn.textContent = 'Uploading…'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Processing…'; btn.disabled = true; }
   try {
-    const publicUrl = await uploadMealImage(mealId, file);
+    // Compress to 400px max, JPEG 70% quality (~30-80KB)
+    const dataUrl = await compressImage(file, 400, 0.7);
+    console.log('[IMG] Compressed size:', Math.round(dataUrl.length / 1024), 'KB');
     // Set the hidden URL input so saveSingleMeal picks it up
     const urlInput = document.getElementById('me-img-url-' + mealId);
-    if (urlInput) urlInput.value = publicUrl;
-    updateMealImg(mealId, publicUrl);
-    if (btn) { btn.textContent = 'Uploaded!'; setTimeout(() => { btn.textContent = 'Upload Image'; }, 2000); }
-    // Auto-save to persist the new image URL
+    if (urlInput) urlInput.value = dataUrl;
+    updateMealImg(mealId, dataUrl);
+    if (btn) { btn.textContent = 'Done!'; setTimeout(() => { btn.textContent = 'Upload Image'; }, 2000); }
+    // Auto-save to persist (saves to DB directly)
     saveMenuToLocal();
   } catch (e) {
-    console.error('Image upload error:', e);
-    alert('Image upload failed: ' + e.message + '\n\nCheck:\n1. Storage bucket "meal-images" exists\n2. Bucket is set to Public\n3. INSERT policy exists for anon role');
-    if (btn) btn.textContent = origText;
+    console.error('Image processing error:', e);
+    alert('Image processing failed: ' + e.message);
+    if (btn) btn.textContent = 'Upload Image';
   } finally {
     if (btn) btn.disabled = false;
-    fileInput.value = ''; // reset so same file can be re-selected
+    fileInput.value = '';
   }
 }
 
