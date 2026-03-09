@@ -622,7 +622,11 @@ window.IMG_SNACK1="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAQDAw
       </div>
       <div class="frow frow-2">
         <div class="field"><label>First name</label><input type="text" id="f-name" placeholder="Jordan"></div>
+        <div class="field"><label>Phone number</label><input type="tel" id="f-phone" placeholder="04XX XXX XXX"></div>
+      </div>
+      <div class="frow frow-2">
         <div class="field"><label>Gender</label><select id="f-gender"><option value="">Select…</option><option value="male">Male</option><option value="female">Female</option></select></div>
+        <div class="field"><label>Drop-off location</label><input type="text" id="f-location" placeholder="123 Main St, Sydney"></div>
       </div>
       <div class="frow frow-3">
         <div class="field"><label>Age</label><input type="number" id="f-age" placeholder="25" min="16" max="80"></div>
@@ -1096,6 +1100,8 @@ function stepNext(){
     const selCards=Array.from(document.querySelectorAll('.meal-card.selected'));
     const orderId='ORD-'+Date.now().toString().slice(-6);
     const client=document.getElementById('f-name').value||'Client';
+    const phone=document.getElementById('f-phone').value||'';
+    const location=document.getElementById('f-location').value||'';
     const goal=selGoalVal||document.getElementById('f-goal').value||'—';
     const today=new Date().toISOString().slice(0,10);
     // Calculate total from order-total-box if available
@@ -1128,7 +1134,7 @@ function stepNext(){
         weekPlanMeals.push({meal_id:found?found.id:'',name:mealName,type:mealType});
       }
     });
-    const newOrder={id:orderId,client,goal,date:today,status:'pending',total,meals,mealsPerDay,weekPlanMeals};
+    const newOrder={id:orderId,client,phone,location,goal,date:today,status:'pending',total,meals,mealsPerDay,weekPlanMeals};
     ORDERS.unshift(newOrder);
     saveOrdersToLocal();
     saveOrderToDB(newOrder).then(ok=>{if(ok)showDBStatus('saved');});
@@ -1148,7 +1154,7 @@ function hideStepError(){document.getElementById('step-error').style.display='no
 // ── STEP 1 VALIDATE ──
 function validateStep1(){
   const fields=[
-    ['f-name','First name'],['f-gender','Gender'],['f-age','Age'],
+    ['f-name','First name'],['f-phone','Phone number'],['f-gender','Gender'],['f-location','Drop-off location'],['f-age','Age'],
     ['f-height','Height'],['f-weight','Weight'],['f-steps','Daily steps'],
     ['f-exercise','Exercise days'],['f-mealfreq','Meals per day'],['f-goal','Goal']
   ];
@@ -1481,6 +1487,8 @@ async function loadOrdersFromDB() {
     const meals = await sbFetch('order_meals?select=*');
     ORDERS = orders.map(o => ({
       ...o,
+      phone: o.phone||'',
+      location: o.location||'',
       mealsPerDay: o.meals_per_day||3,
       weekPlanMeals: typeof o.week_plan_meals==='string'?JSON.parse(o.week_plan_meals):(o.week_plan_meals||[]),
       meals: meals.filter(m => m.order_id === o.id)
@@ -1509,6 +1517,8 @@ async function saveOrderToDB(order) {
       body: JSON.stringify({
         id: order.id,
         client: order.client,
+        phone: order.phone||'',
+        location: order.location||'',
         goal: order.goal,
         date: order.date,
         status: order.status,
@@ -2420,7 +2430,8 @@ function renderAllOrders(){document.getElementById('all-orders').innerHTML=ORDER
 function orderCard(o){
   return `<div class="order-card">
     <div class="oc-hdr"><div class="oc-id">${o.id}</div><span class="oc-status s-${o.status}">${o.status}</span></div>
-    <div class="oc-client">${o.client} · <span style="color:var(--grey);font-weight:300">${o.goal}</span></div>
+    <div class="oc-client">${o.client}${o.phone?' · '+o.phone:''} · <span style="color:var(--grey);font-weight:300">${o.goal}</span></div>
+    ${o.location?'<div style="font-size:.75rem;color:var(--grey)">📍 '+o.location+'</div>':''}
     <div class="oc-meals">${(o.meals||[]).map(m=>`${m.name}`).join(' · ')}</div>
     <div class="oc-footer">
       <div class="oc-total">$${o.total.toFixed(2)}</div>
