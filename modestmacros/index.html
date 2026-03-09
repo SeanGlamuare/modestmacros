@@ -2280,6 +2280,8 @@ function updateMealImg(mealId,url){
   // Update menu page card image
   const menuImg=document.querySelector('.menu-meal-card[data-id="'+mealId+'"] .mmc-img');
   if(menuImg)menuImg.src=url;
+  // Update landing page thumbnails
+  syncMealThumbs();
 }
 
 function saveSingleMeal(mealId,btn){
