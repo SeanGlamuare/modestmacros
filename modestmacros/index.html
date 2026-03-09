@@ -1445,15 +1445,16 @@ const SUPABASE_URL = 'https://rxnkthontrccftqetbyz.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ4bmt0aG9udHJjY2Z0cWV0Ynl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMwNDAzMjIsImV4cCI6MjA4ODYxNjMyMn0.rl9okBggsCzfHVFjfFQt8DV3FKemMkoHq49uMCqAkgM';
 
 async function sbFetch(path, options={}) {
+  const {headers: extraHeaders, prefer, ...fetchOpts} = options;
   const res = await fetch(SUPABASE_URL + '/rest/v1/' + path, {
+    ...fetchOpts,
     headers: {
       'apikey': SUPABASE_KEY,
       'Authorization': 'Bearer ' + SUPABASE_KEY,
       'Content-Type': 'application/json',
-      'Prefer': options.prefer || 'return=representation',
-      ...options.headers
-    },
-    ...options
+      'Prefer': prefer || 'return=representation',
+      ...extraHeaders
+    }
   });
   if (!res.ok) {
     const err = await res.text();
@@ -1717,7 +1718,7 @@ async function saveMenuToDB(){
     for(const meal of MENU_DATA){
       const imgUrl=(typeof MEAL_IMGS!=='undefined'&&MEAL_IMGS[meal.id])?MEAL_IMGS[meal.id]:null;
       const row={id:meal.id,name:meal.name,cat:meal.cat,description:meal.desc,ingredients:JSON.stringify(meal.ingredients),image_url:imgUrl,updated_at:new Date().toISOString()};
-      await sbFetch('menu_items',{method:'POST',prefer:'return=minimal',headers:{'Prefer':'return=minimal,resolution=merge-duplicates'},body:JSON.stringify(row)});
+      await sbFetch('menu_items',{method:'POST',prefer:'return=minimal,resolution=merge-duplicates',body:JSON.stringify(row)});
     }
     // Delete items from DB that were removed locally
     if(MENU_DATA.length){
@@ -2302,7 +2303,6 @@ async function handleMealImageUpload(mealId, fileInput) {
   try {
     // Compress to 400px max, JPEG 70% quality (~30-80KB)
     const dataUrl = await compressImage(file, 400, 0.7);
-    console.log('[IMG] Compressed size:', Math.round(dataUrl.length / 1024), 'KB');
     // Set the hidden URL input so saveSingleMeal picks it up
     const urlInput = document.getElementById('me-img-url-' + mealId);
     if (urlInput) urlInput.value = dataUrl;
